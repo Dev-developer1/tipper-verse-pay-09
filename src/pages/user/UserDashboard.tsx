@@ -1,25 +1,42 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { QrCode, History, CreditCard, User, LogOut, Plus, Clock, MapPin, Settings } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useSupabaseApi } from "@/hooks/useSupabaseApi";
 
 const UserDashboard = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const [recentTransactions] = useState([
-    { id: 'tx-1', merchant: 'Coffee House', amount: 50, date: '2024-06-11 14:30', status: 'completed', type: 'Merchant' },
-    { id: 'tx-2', merchant: 'Raj Kumar (Driver)', amount: 150, date: '2024-06-10 19:45', status: 'completed', type: 'Service Provider' },
-    { id: 'tx-3', merchant: 'Hotel Service', amount: 100, date: '2024-06-09 12:15', status: 'completed', type: 'Merchant' },
-  ]);
+  const { getUserTransactions, loading } = useSupabaseApi();
+  const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
+  const [userStats, setUserStats] = useState({ total_tipped: 0, merchants_count: 0 });
 
   const [favoritesMerchants] = useState([
     { id: 'm-1', name: 'Coffee House', category: 'Cafe', lastTip: 50 },
     { id: 'm-2', name: 'Restaurant ABC', category: 'Restaurant', lastTip: 150 },
   ]);
+
+  useEffect(() => {
+    const loadTransactions = async () => {
+      try {
+        const result = await getUserTransactions(5, 0);
+        if (result.success) {
+          setRecentTransactions(result.transactions);
+          setUserStats(result.stats);
+        }
+      } catch (error) {
+        console.error('Failed to load transactions:', error);
+      }
+    };
+
+    if (user) {
+      loadTransactions();
+    }
+  }, [user]);
 
   const handleLogout = () => {
     logout();
@@ -172,11 +189,11 @@ const UserDashboard = () => {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="text-center p-4 bg-tipper-primary/5 rounded-lg">
-                  <p className="text-2xl font-bold text-tipper-primary">₹300</p>
-                  <p className="text-sm text-tipper-gray-600">Total Tips This Month</p>
+                  <p className="text-2xl font-bold text-tipper-primary">₹{userStats.total_tipped}</p>
+                  <p className="text-sm text-tipper-gray-600">Total Tips Given</p>
                 </div>
                 <div className="text-center p-4 bg-tipper-secondary/5 rounded-lg">
-                  <p className="text-2xl font-bold text-tipper-secondary">3</p>
+                  <p className="text-2xl font-bold text-tipper-secondary">{userStats.merchants_count}</p>
                   <p className="text-sm text-tipper-gray-600">Merchants Tipped</p>
                 </div>
               </CardContent>

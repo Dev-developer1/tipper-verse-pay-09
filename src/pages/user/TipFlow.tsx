@@ -8,6 +8,8 @@ import { ArrowLeft, QrCode, Smartphone, CreditCard, Check, Heart } from "lucide-
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { useSupabaseApi } from "@/hooks/useSupabaseApi";
+import { useAuth } from "@/contexts/AuthContext";
 
 const TipFlow = () => {
   const [step, setStep] = useState<'scan' | 'verify' | 'amount' | 'payment' | 'processing'>('scan');
@@ -20,6 +22,8 @@ const TipFlow = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
+  const { lookupMerchant, processTip, loading } = useSupabaseApi();
+  const { user } = useAuth();
 
   useEffect(() => {
     const method = searchParams.get('method');
@@ -35,22 +39,27 @@ const TipFlow = () => {
     { id: 'wallet', name: 'Digital Wallet', icon: '📱' },
   ];
 
-  const handleScanQR = () => {
-    // Simulate QR scan
-    setTimeout(() => {
-      setMerchant({
-        id: 'merchant-1',
-        name: 'Coffee House',
-        category: 'Cafe',
-        verified: true,
-        location: 'Downtown',
-        photo: '☕'
+  const handleScanQR = async () => {
+    try {
+      // In a real app, this would trigger the camera to scan QR
+      // For demo, we'll use a sample QR code
+      const sampleQRCode = 'merchant_qr_12345';
+      
+      const result = await lookupMerchant(sampleQRCode);
+      if (result.success) {
+        setMerchant(result.merchant);
+        setStep('verify');
+      }
+    } catch (error) {
+      toast({
+        title: "QR Scan Failed",
+        description: "Could not find merchant with this QR code",
+        variant: "destructive"
       });
-      setStep('verify');
-    }, 1500);
+    }
   };
 
-  const handlePhoneVerify = () => {
+  const handlePhoneVerify = async () => {
     if (!phoneNumber) {
       toast({
         title: "Phone number required",
@@ -60,18 +69,19 @@ const TipFlow = () => {
       return;
     }
 
-    // Simulate merchant lookup
-    setTimeout(() => {
-      setMerchant({
-        id: 'merchant-2',
-        name: 'Restaurant ABC',
-        category: 'Restaurant',
-        verified: true,
-        location: 'Food Court',
-        photo: '🍽️'
+    try {
+      const result = await lookupMerchant(undefined, phoneNumber);
+      if (result.success) {
+        setMerchant(result.merchant);
+        setStep('verify');
+      }
+    } catch (error) {
+      toast({
+        title: "Merchant not found",
+        description: "No merchant found with this phone number",
+        variant: "destructive"
       });
-      setStep('verify');
-    }, 1000);
+    }
   };
 
   const handleConfirmMerchant = () => {
@@ -90,14 +100,31 @@ const TipFlow = () => {
     setStep('payment');
   };
 
-  const handlePayment = () => {
+  const handlePayment = async () => {
+    if (!user) {
+      toast({
+        title: "Authentication required",
+        description: "Please log in to continue",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setStep('processing');
     
-    // Simulate payment processing
-    setTimeout(() => {
-      const transactionId = 'tx-' + Date.now();
-      navigate(`/user/receipt/${transactionId}?amount=${amount}&merchant=${merchant.name}&message=${encodeURIComponent(message)}`);
-    }, 3000);
+    try {
+      const result = await processTip(merchant.id, amount, message, selectedPayment);
+      if (result.success) {
+        navigate(`/user/receipt/${result.transaction_id}?amount=${amount}&merchant=${encodeURIComponent(merchant.name)}&message=${encodeURIComponent(message)}&reference=${result.payment_reference}`);
+      }
+    } catch (error) {
+      setStep('payment');
+      toast({
+        title: "Payment Failed",
+        description: "There was an error processing your payment. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   return (
@@ -150,8 +177,8 @@ const TipFlow = () => {
                     <QrCode className="h-24 w-24 text-tipper-gray-400" />
                   </div>
                   <p className="text-tipper-gray-600 mb-4">Position the QR code within the frame</p>
-                  <Button onClick={handleScanQR} className="bg-tipper-primary">
-                    Simulate QR Scan
+                  <Button onClick={handleScanQR} className="bg-tipper-primary" disabled={loading}>
+                    {loading ? 'Scanning...' : 'Simulate QR Scan'}
                   </Button>
                 </div>
               ) : (
@@ -162,8 +189,8 @@ const TipFlow = () => {
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value)}
                   />
-                  <Button onClick={handlePhoneVerify} className="w-full">
-                    Find Merchant
+                  <Button onClick={handlePhoneVerify} className="w-full" disabled={loading}>
+                    {loading ? 'Searching...' : 'Find Merchant'}
                   </Button>
                 </div>
               )}
@@ -270,9 +297,9 @@ const TipFlow = () => {
                 ))}
               </div>
 
-              <Button onClick={handlePayment} className="w-full bg-tipper-success text-lg">
+              <Button onClick={handlePayment} className="w-full bg-tipper-success text-lg" disabled={loading}>
                 <CreditCard className="h-5 w-5 mr-2" />
-                Pay ₹{amount}
+                {loading ? 'Processing...' : `Pay ₹${amount}`}
               </Button>
             </CardContent>
           </Card>
